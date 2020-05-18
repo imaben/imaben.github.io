@@ -50,29 +50,40 @@
   };
 </script>
 
-  <meta property="og:type" content="website">
-<meta property="og:title" content="maben&#39;s blog">
-<meta property="og:url" content="http://maben.me/index.html">
+  <meta name="description" content="mmap是POSIX规范接口中用来处理内存映射的一个系统调用，它本身的使用场景非常多，可以用来申请大块内存，可以用来申请共享内存，也可以将文件或设备直接映射到内存中，进程可以像访问普通内存一样访问被映射的文件，在实际开发过程使用场景非常多。这次要聊的重点是mmap映射普通文件的一些原理。 备注：文中引用的所有linux相关源码均基于4.1版本。 1、Linux内存管理 如果要了解mmap的原理，需">
+<meta property="og:type" content="article">
+<meta property="og:title" content="mmap机制分析">
+<meta property="og:url" content="http://maben.me/2020/04/21/mmap-implementation/index.html">
 <meta property="og:site_name" content="maben&#39;s blog">
+<meta property="og:description" content="mmap是POSIX规范接口中用来处理内存映射的一个系统调用，它本身的使用场景非常多，可以用来申请大块内存，可以用来申请共享内存，也可以将文件或设备直接映射到内存中，进程可以像访问普通内存一样访问被映射的文件，在实际开发过程使用场景非常多。这次要聊的重点是mmap映射普通文件的一些原理。 备注：文中引用的所有linux相关源码均基于4.1版本。 1、Linux内存管理 如果要了解mmap的原理，需">
 <meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://maben.me/2020/04/21/mmap-implementation/1.png">
+<meta property="og:image" content="http://maben.me/2020/04/21/mmap-implementation/2.png">
+<meta property="og:image" content="http://maben.me/2020/04/21/mmap-implementation/3.png">
+<meta property="og:image" content="http://maben.me/2020/04/21/mmap-implementation/4.png">
+<meta property="article:published_time" content="2020-04-21T14:07:12.000Z">
+<meta property="article:modified_time" content="2020-04-22T04:47:44.311Z">
 <meta property="article:author" content="maben">
+<meta property="article:tag" content="mmap">
+<meta property="article:tag" content="linux">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://maben.me/2020/04/21/mmap-implementation/1.png">
 
-<link rel="canonical" href="http://maben.me/">
+<link rel="canonical" href="http://maben.me/2020/04/21/mmap-implementation/">
 
 
 <script id="page-configurations">
   // https://hexo.io/docs/variables.html
   CONFIG.page = {
     sidebar: "",
-    isHome: true,
-    isPost: false,
+    isHome: false,
+    isPost: true,
     isPage: false,
     isArchive: false
   };
 </script>
 
-  <title>maben's blog</title>
+  <title>mmap机制分析 | maben's blog</title>
   
 
 
@@ -167,81 +178,10 @@
             
 
   <div class="posts-expand">
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://maben.me/2020/05/18/ssh-or-scp-fail/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.png">
-      <meta itemprop="name" content="maben">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="maben's blog">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2020/05/18/ssh-or-scp-fail/" class="post-title-link" itemprop="url">ssh或scp失败的问题</a>
-        </h1>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2020-05-18 19:33:55 / 修改时间：19:48:01" itemprop="dateCreated datePublished" datetime="2020-05-18T19:33:55+08:00">2020-05-18</time>
-            </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
       
-          <p>项目中有这么一个需求，要把本地文件较大批量的拷贝到远程机器，因为拷贝的机器数比较多，所以使用了<code>nohup scp xxx user@host:/path/to/file &gt; /dev/null 2&gt;&amp; &amp;</code>这种异步操作，最近发现经常有一些文件拷贝失败，经排查最终定位到是ssh的连接数超出限制，导致被目标机器拒绝了。</p>
-<p>官方文档地址：<a href="https://linux.die.net/man/5/sshd_config" target="_blank" rel="noopener">https://linux.die.net/man/5/sshd_config</a></p>
-<p>其中需要修改的参数是<code>MaxStartups</code>，官方的文档描述如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Specifies the maximum number of concurrent unauthenticated connections to the SSH daemon. Additional connections will be dropped until authentication succeeds or the LoginGraceTime expires for a connection. The default is 10.</span><br><span class="line"></span><br><span class="line">Alternatively, random early drop can be enabled by specifying the three colon separated values &#39;&#39;start:rate:full&#39;&#39; (e.g. &quot;10:30:60&quot;). sshd(8) will refuse connection attempts with a probability of &#39;&#39;rate&#x2F;100&#39;&#39; (30%) if there are currently &#39;&#39;start&#39;&#39; (10) unauthenticated connections. The probability increases linearly and all connection attempts are refused if the number of unauthenticated connections reaches &#39;&#39;full&#39;&#39; (60).</span><br></pre></td></tr></table></figure>
-
-<p>简单来说就是这个参数用来指定ssh的最大并发未身份验证连接数，默认是10，在大批量文件拷贝的情况下显然是不够的。</p>
-<p>参数可以设置一个整数，如<code>30</code>，也可以设置一个用冒号分割的值:<code>start:rate:full</code>，假如设置的是<code>10:30:60</code>，那么它的作用是：</p>
-<ul>
-<li>连接数在10(start)以下不会拒绝连接</li>
-<li>当连接数超过10(start)之后，新的连接有30%(rate)的几率被拒绝掉</li>
-<li>当连接数超过60(full)后，那么所有的连接均会被拒绝</li>
-</ul>
-<p>查到了原因，根据自己实际的情况，将参数设置为合适值，执行<code>service ssh restart</code>重启ssh服务，问题修复。</p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
   
   
-  
-
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://maben.me/2020/04/21/mmap-implementation/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -255,8 +195,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2020/04/21/mmap-implementation/" class="post-title-link" itemprop="url">mmap机制分析</a>
+          mmap机制分析
         </h1>
 
         <div class="post-meta">
@@ -277,6 +216,13 @@
               </span>
 
           
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
 
         </div>
       </header>
@@ -287,7 +233,7 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p>mmap是POSIX规范接口中用来处理内存映射的一个系统调用，它本身的使用场景非常多，可以用来申请大块内存，可以用来申请共享内存，也可以将文件或设备直接映射到内存中，进程可以像访问普通内存一样访问被映射的文件，在实际开发过程使用场景非常多。这次要聊的重点是mmap映射普通文件的一些原理。</p>
+        <p>mmap是POSIX规范接口中用来处理内存映射的一个系统调用，它本身的使用场景非常多，可以用来申请大块内存，可以用来申请共享内存，也可以将文件或设备直接映射到内存中，进程可以像访问普通内存一样访问被映射的文件，在实际开发过程使用场景非常多。这次要聊的重点是mmap映射普通文件的一些原理。</p>
 <p>备注：文中引用的所有linux相关源码均基于4.1版本。</p>
 <p><strong>1、Linux内存管理</strong></p>
 <p>如果要了解mmap的原理，需要先了解一下linux对内存是怎么管理的。<br>计算机系统中物理内存的大小总是有限的，而我们需要在计算机中运行多个进程，如果允许进程直接访问物理内存，那么可能会发生一些致命的问题，比如A进程不小心把数据写到了B进程的内存中，产生的问题可能是灾难性的。<br>为了更加安全有效的对内存进行管理，在现代计算机系统中对物理内存做了一层抽象，即虚拟内存。它为每一个进程都提供一块连续的私有地址空间，在32位模式下，每一块虚拟地址空间大小为4GB。<br>系统将虚拟内存分割成一块块固定大小的虚拟页（Virtual Page），同样的，物理内存也会被分割成物理页（Physical Page），当进程访问内存时，CPU通过内存管理单元（MMU）根据页表（Page Table）将虚拟地址翻译成物理地址，最终取到内存数据。这样在每个进程内部都像是独享整个主存。</p>
@@ -339,360 +285,43 @@
 <p><strong>4、总结</strong></p>
 <p>经过对linux内核源码的一些剖析，对mmap的原理会有更深层次的理解 。 mmap的优点有很多，相比传统的read/write等I/O方式，直接将虚拟地址的区域映射到文件，没有任何数据拷贝的操作，当发现有缺页时，通过映射关系将磁盘的数据加载到内存，用户态程序直接可见，提高了文件读取的效率。对索引数据这种大文件的读取、cache、换页等操作直接交由操作系统去调度，间接减少了用户程序的复杂度，并提高了运行效率。</p>
 
-      
     </div>
 
     
     
     
+
       <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
+          <div class="post-tags">
+              <a href="/tags/mmap/" rel="tag"># mmap</a>
+              <a href="/tags/linux/" rel="tag"># linux</a>
+          </div>
 
         
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://maben.me/2020/04/21/volatile/">
 
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.png">
-      <meta itemprop="name" content="maben">
-      <meta itemprop="description" content="">
-    </span>
+          <div class="post-nav">
+            <div class="post-nav-next post-nav-item">
+                <a href="/2020/04/21/volatile/" rel="next" title="volatile在汇编层面的分析">
+                  <i class="fa fa-chevron-left"></i> volatile在汇编层面的分析
+                </a>
+            </div>
 
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="maben's blog">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2020/04/21/volatile/" class="post-title-link" itemprop="url">volatile在汇编层面的分析</a>
-        </h1>
+            <span class="post-nav-divider"></span>
 
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2020-04-21 21:36:51" itemprop="dateCreated datePublished" datetime="2020-04-21T21:36:51+08:00">2020-04-21</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-04-22 12:47:44" itemprop="dateModified" datetime="2020-04-22T12:47:44+08:00">2020-04-22</time>
-              </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>今天正好在群里跟朋友聊volatile的问题，测了一下gcc对volatile变量和正常变量的实现区别，顺便记一下。</p>
-<p><strong>备注：此volatile是在c语言在gcc下的测试结果和原理，和java里的volatile完全两个概念，不要混淆！不要混淆！不要混淆！</strong></p>
-<p>首先写一个很简单的demo:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">int</span> a = <span class="number">100</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">foo</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        <span class="keyword">while</span> (a &gt; <span class="number">10</span>) &#123;&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        foo();</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>重点就是看反编译后的foo函数的实现，循环判断a是否大于10，然后看a是普通变量和volatile修饰变量的差异：</p>
-<p>普通变量的gcc编译后的汇编代码如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">0000000000000620 &lt;foo&gt;:</span><br><span class="line"> 620:   8b 05 ea 09 20 00       mov    eax,DWORD PTR [rip+0x2009ea] # 将a的值从内存加载至寄存器</span><br><span class="line"> 626:   66 2e 0f 1f 84 00 00    nop    WORD PTR cs:[rax+rax*1+0x0]</span><br><span class="line"> 62d:   00 00 00</span><br><span class="line"> 630:   83 f8 0a                cmp    eax,0xa                      # 将eax寄存器的值与0xa(10)做对比</span><br><span class="line"> 633:   7f fb                   jg     630 &lt;foo+0x10&gt;               # jg，如果大于目标值，跳转至630，继续对比eax和0xa</span><br><span class="line"> 635:   f3 c3                   repz ret</span><br><span class="line"> 637:   66 0f 1f 84 00 00 00    nop    WORD PTR [rax+rax*1+0x0]</span><br></pre></td></tr></table></figure>
-
-<p>对变量a加上volatile修饰后的汇编代码如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">0000000000000610 &lt;foo&gt;:</span><br><span class="line"> 610:   8b 05 fa 09 20 00       mov    eax,DWORD PTR [rip+0x2009fa]  # 将a的值从内存加载至寄存器</span><br><span class="line"> 616:   83 f8 0a                cmp    eax,0xa                       # 将eax寄存器的值与0xa(10)做对比</span><br><span class="line"> 619:   7f f5                   jg     610 &lt;foo&gt;                     # jg，如果大于目标值，跳转至610，重新将a的值从内存加载至eax</span><br><span class="line"> 61b:   f3 c3                   repz ret</span><br><span class="line"> 61d:   0f 1f 00                nop    DWORD PTR [rax]</span><br></pre></td></tr></table></figure>
-
-<p>可以明显的看到，未加volatile的汇编是每次只跟eax寄存器中的值做对比，而加上volatile之后，是跳转至610，也就是会重新将a的值从内存加载至寄存器，保证每次a的值都是最新，从而保证了“可见性”</p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
+            <div class="post-nav-prev post-nav-item">
+                <a href="/2020/05/18/ssh-or-scp-fail/" rel="prev" title="ssh或scp失败的问题">
+                  ssh或scp失败的问题 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
       </footer>
-  </article>
-  
-  
-  
-
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://maben.me/2020/02/25/use-wsl-terminal-in-idea/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.png">
-      <meta itemprop="name" content="maben">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="maben's blog">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2020/02/25/use-wsl-terminal-in-idea/" class="post-title-link" itemprop="url">在idea、phpstorm等jetbrains全家桶中使用WSL Terminal</a>
-        </h1>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2020-02-25 17:19:25 / 修改时间：17:24:27" itemprop="dateCreated datePublished" datetime="2020-02-25T17:19:25+08:00">2020-02-25</time>
-            </span>
-
-          
-
-        </div>
-      </header>
-
     
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <ul>
-<li>在idea或phpstorm中执行File -&gt; Setting</li>
-<li>选择Tools -&gt; Terminal</li>
-<li>在Shell path中输入<code>&quot;cmd.exe&quot; /k &quot;wsl.exe&quot;</code></li>
-<li>保存退出</li>
-</ul>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://maben.me/2019/11/24/thinking-about-bitmap/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.png">
-      <meta itemprop="name" content="maben">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="maben's blog">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2019/11/24/thinking-about-bitmap/" class="post-title-link" itemprop="url">Bitmap实现过程中的一些思考</a>
-        </h1>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2019-11-24 10:41:23" itemprop="dateCreated datePublished" datetime="2019-11-24T10:41:23+08:00">2019-11-24</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2019-12-15 14:47:48" itemprop="dateModified" datetime="2019-12-15T14:47:48+08:00">2019-12-15</time>
-              </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>前段时间为了做一个分享，实现了一个简单的搜索引擎（<a href="https://github.com/imaben/ts-engine" target="_blank" rel="noopener">https://github.com/imaben/ts-engine</a>), 其中有一个标记删除的地方用到了bitmap，刚开始没有想那么复杂，真正写起来，发现需要注意的一些细节还是不少的，所以在此记录一下开发过程中的一些心得，主要是一些位运算相关的点。</p>
-<p>代码链接：<a href="https://github.com/imaben/ts-engine/blob/master/bitmap.h" target="_blank" rel="noopener">https://github.com/imaben/ts-engine/blob/master/bitmap.h</a></p>
-<p>首先说一下bitmap的原理，bitmap的应用非常广泛，它通常是以bit位来标记某个id的状态，优点是占用空间小，查询效率高，<code>1byte = 8bit</code>，假如一共1000万的数据量，总共算下来占用的空间也只有 <code>10000000/8/1024 = 1220KB</code>, 刚刚有1MB多一点。查询时直接根据id来找到对应的byte，然后做位于运算，直接可以拿到结果，由于不涉及到复杂运算，寻址的范围也很小，所以整体的查询效率非常高。</p>
-<p>但这种方式本身也有局限性，就是要标记的id最好是从1开始自增的情况，如果id完全没有规律，则很容易出现内存空洞的情况。</p>
-<p>bitmap结构体的定义如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">uint8_t</span> *c;</span><br><span class="line">    <span class="keyword">uint64_t</span> l;</span><br><span class="line">&#125; <span class="keyword">ts_bitmap_t</span>;</span><br></pre></td></tr></table></figure>
-<p>结构体本身比较简单，一个uint8_t(char)类型的指针，指向一块保存bitmap数据的内存，一个uint64_t类型的长度，用来标记c的长度。有一些做法是采用int型指针来保存数据，但在跨平台时，可能要考虑大小端的问题，但个人感觉没有本质上的区别。</p>
-<p>第一步要做的就是要保证每次set时c的长度是足够的，所以需要在每次set时，都需要检查一下c的长度，以防止内存访问越界的情况发生。但是为了减少内存频繁分配的开销，一般都会有一些预分配的做法，比如按照128字节做对齐，当小于128字节时，也分配128字节的大小，当是129字节时，就分配256字节，以此类推。这样做有两点好处，一是避免递增访问时，内存频繁分配，二是保证整个buffer的内存大小总是cpu cacheline的整倍数，从而提高cpu缓存的存取性能。</p>
-<p>首先要实现上面提到的预分配逻辑：假如按照比较传统的写法应该是这样(伪代码)：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PREALLOC 128</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">mem_align</span><span class="params">(<span class="keyword">int</span> <span class="built_in">size</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">size</span> &lt;= PREALLOC) &#123;</span><br><span class="line">        <span class="keyword">return</span> PREALLOC;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 求size是PREALLOC的多少倍</span></span><br><span class="line">    <span class="comment">// 向上取整并乘以PREALLOC</span></span><br><span class="line">    <span class="keyword">int</span> multiple = <span class="built_in">ceil</span>(<span class="built_in">size</span> / PREALLOC);</span><br><span class="line">    <span class="keyword">return</span> multiple * PREALLOC;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>但这样显然不太优雅，性能上开销也比较大，如果通过位运算来解决呢？<br>举两个例子，假如有10和129，我们需要最终转换为128和256，如下表：</p>
-<table>
-<thead>
-<tr>
-<th>10进制</th>
-<th>2进制</th>
-<th>目标2进制</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>10</td>
-<td>00001010</td>
-<td>10000000</td>
-</tr>
-<tr>
-<td>129</td>
-<td>10000001</td>
-<td>100000000</td>
-</tr>
-</tbody></table>
-<p>拿<code>10</code>来举例，既然要做128字节对齐，我们不妨先把它加个128：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">10 + 128 &#x3D; 138 &#x3D; 10001010</span><br></pre></td></tr></table></figure>
-<p>跟我们的目标值已经很像了，我们只需要把最高位1后面的所有的非0，全部置为0就达到目的了，可以使用反码加位与的操作解决，如下：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">128 - 1 &#x3D; 01111111 &#x2F;&#x2F; 先将需要置为0的位数全部置为1</span><br><span class="line"></span><br><span class="line">~(128 - 1) &#x3D; 11111111 11111111 11111111 10000000 &#x2F;&#x2F; 按位取反，以32位整数为例</span><br><span class="line"></span><br><span class="line">(10 + 128) &amp; (~128 - 1) &#x3D; 10000000 &#x2F;&#x2F; 成功转换</span><br></pre></td></tr></table></figure>
-<p>但是这个地方有一个极端情况，就是当值正好是128时，用上面的算法算出来就是256了，所以再处理一下就是</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(10 + 128 - 1) &amp; (~128 - 1)</span><br></pre></td></tr></table></figure>
-<p>这样就解决了上面所说的问题。</p>
-<p>最终预分配的代码如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> TS_BITMAP_PREALLOC</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> TS_BITMAP_PREALLOC 128LL</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bmp_align(s) ((s + TS_BITMAP_PREALLOC - 1) &amp; ~(TS_BITMAP_PREALLOC - 1))</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bitmap_reserve(bm, n) &#123; \</span></span><br><span class="line">    <span class="keyword">if</span> ((n) &gt; ((bm)-&gt;l)) &#123;  \</span><br><span class="line">        <span class="keyword">uint64_t</span> __len = ts_bmp_align(n); \</span><br><span class="line">        (bm)-&gt;c = ts_realloc((bm)-&gt;c, __len); \</span><br><span class="line">        assert((bm)-&gt;c != <span class="literal">NULL</span>); \</span><br><span class="line">        bzero((<span class="keyword">void</span> *)((bm)-&gt;c + (bm)-&gt;l), __len - (bm)-&gt;l); \</span><br><span class="line">        (bm)-&gt;l = __len; \</span><br><span class="line">    &#125; \</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><strong>小细节：</strong></p>
-<p>在上面按位取反的时候，需要注意32位与64位的问题，假如有以下函数：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">uint64_t</span> <span class="title">mem_align</span><span class="params">(<span class="keyword">uint64_t</span> i, <span class="keyword">int</span> align)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> (i + align - <span class="number">1</span>) &amp; ~(align - <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>看似很和谐，其实隐藏着一个大坑，我们将这段代码编译成汇编（GCC），生成如下代码：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">_mem_align:                             ## @mem_align</span><br><span class="line">        .cfi_startproc</span><br><span class="line">## %bb.0:</span><br><span class="line">        push    rbp</span><br><span class="line">        .cfi_def_cfa_offset 16</span><br><span class="line">        .cfi_offset rbp, -16</span><br><span class="line">        mov     rbp, rsp</span><br><span class="line">        .cfi_def_cfa_register rbp</span><br><span class="line">        mov     qword ptr [rbp - 8], rdi</span><br><span class="line">        mov     dword ptr [rbp - 12], esi</span><br><span class="line">        mov     rdi, qword ptr [rbp - 8]</span><br><span class="line">        movsxd  rax, dword ptr [rbp - 12]</span><br><span class="line">        add     rdi, rax</span><br><span class="line">        sub     rdi, 1</span><br><span class="line">        mov     esi, dword ptr [rbp - 12]</span><br><span class="line">        sub     esi, 1</span><br><span class="line">        xor     esi, -1</span><br><span class="line">        movsxd  rax, esi</span><br><span class="line">        and     rdi, rax</span><br><span class="line">        mov     rax, rdi</span><br><span class="line">        pop     rbp</span><br><span class="line">        ret</span><br><span class="line">        .cfi_endproc</span><br><span class="line">                                        ## -- End function</span><br><span class="line">        .globl  _main                   ## -- Begin function main</span><br><span class="line">        .p2align        4, 0x90</span><br></pre></td></tr></table></figure>
-<p>可以看到在15行至17行在对align做-1并取反的操作中，竟然是在32位寄存器中进行的，这样就会导致当i的值超过32位时，取反后的结果总是等于0，进而得到的结果也会是0，解决办法很简单，就是把align的类型也改为64位即可。<br>这种情况不同编译器可能会有不同的行为，所以为了稳妥起见，故在定义128长度的时候，改成了64位的128LL。</p>
-<p>—–分割线—–</p>
-<p>解决完内存的问题，再看一下怎么根据id定位到id应该存储的byte上，因为1byte = 8bit，所以也就是单纯的除以8即可，用位运算操作数右移三位即可：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bmp_dig(p) ((p) &gt;&gt; 0x3)</span></span><br></pre></td></tr></table></figure>
-
-<p>找到了对应的字节，再要在字节中找到每N位，直接对8取模即可：</p>
-<p>首先8的二进制为1000，模除只需要将二进制后三位置为1，再与操作数做位与操作：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bmp_mod(p) ((p) &amp; 0x7)</span></span><br></pre></td></tr></table></figure>
-<p>需要注意的是这种方式只有在模除数是2的n次方时有效。</p>
-<p>—–分割线—–</p>
-<p>下面就是操作set、unset和get了，set最简单：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bitmap_set(bm, p) &#123; \</span></span><br><span class="line">    ts_bitmap_reserve(ts_bitmap_p(bm), ts_bmp_dig(p) + <span class="number">1</span>); \</span><br><span class="line">    ts_bitmap_p(bm)-&gt;c[ts_bmp_dig(p)] |= (<span class="number">1</span> &lt;&lt; ts_bmp_mod(p)); \</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>直接通过dig找到对应byte后，将1左移取模后的第n位，做位或操作即可。</p>
-<p>unset操作如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bitmap_unset(bm, p) &#123; \</span></span><br><span class="line">    <span class="keyword">if</span> (ts_bmp_dig(p) &lt; (bm)-&gt;l) ts_bitmap_p(bm)-&gt;c[ts_bmp_dig(p)] &amp;=  ~(<span class="number">1</span> &lt;&lt; (ts_bmp_mod(p))); \</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>先判断如果unset操作数的所在的字节已经超过buffer的总长度，直接忽略。<br>然后为了在unset时不影响当前byte的其它位，故需要左移后做个取反，再与原数做位于操作。</p>
-<p>get操作如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ts_bitmap_get(bm, p) ((ts_bmp_dig(p) &gt;= ((ts_bitmap_p(bm))-&gt;l) ? 0 : \</span></span><br><span class="line">            ((ts_bitmap_p(bm)-&gt;c[ts_bmp_dig(p)]) &gt;&gt; ts_bmp_mod(p))) &amp; <span class="number">1</span>)</span><br></pre></td></tr></table></figure>
-<p>和unset一样做一个长度的基本判断，然后按照对应byte，将对应的bit右移到最后一位，与1做位于操作。</p>
-<p>至此，bitmap的实现完成。</p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-        
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://maben.me/2019/11/15/hello-world/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.png">
-      <meta itemprop="name" content="maben">
-      <meta itemprop="description" content="">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="maben's blog">
-    </span>
-      <header class="post-header">
-        <h1 class="post-title" itemprop="name headline">
-          
-            <a href="/2019/11/15/hello-world/" class="post-title-link" itemprop="url">Hello World</a>
-        </h1>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2019-11-15 17:17:23" itemprop="dateCreated datePublished" datetime="2019-11-15T17:17:23+08:00">2019-11-15</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="fa fa-calendar-check-o"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-02-25 17:22:25" itemprop="dateModified" datetime="2020-02-25T17:22:25+08:00">2020-02-25</time>
-              </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>时隔多年，博客又重新开张了！</p>
-
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
   </article>
   
   
   
 
   </div>
-
-  
-
 
 
           </div>

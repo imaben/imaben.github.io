@@ -50,15 +50,21 @@
   };
 </script>
 
-  <meta property="og:type" content="website">
-<meta property="og:title" content="maben&#39;s blog">
-<meta property="og:url" content="http://maben.me/tags/bitmap/index.html">
+  <meta name="description" content="项目中有这么一个需求，要把本地文件较大批量的拷贝到远程机器，因为拷贝的机器数比较多，所以使用了nohup scp xxx user@host:&#x2F;path&#x2F;to&#x2F;file &gt; &#x2F;dev&#x2F;null 2&gt;&amp; &amp;这种异步操作，最近发现经常有一些文件拷贝失败，经排查最终定位到是ssh的连接数超出限制，导致被目标机器拒绝了。 官方文档地址：https:&#x2F;&#x2F;linux.die.net">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ssh或scp失败的问题">
+<meta property="og:url" content="http://maben.me/2020/05/18/ssh-or-scp-fail/index.html">
 <meta property="og:site_name" content="maben&#39;s blog">
+<meta property="og:description" content="项目中有这么一个需求，要把本地文件较大批量的拷贝到远程机器，因为拷贝的机器数比较多，所以使用了nohup scp xxx user@host:&#x2F;path&#x2F;to&#x2F;file &gt; &#x2F;dev&#x2F;null 2&gt;&amp; &amp;这种异步操作，最近发现经常有一些文件拷贝失败，经排查最终定位到是ssh的连接数超出限制，导致被目标机器拒绝了。 官方文档地址：https:&#x2F;&#x2F;linux.die.net">
 <meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2020-05-18T11:33:55.000Z">
+<meta property="article:modified_time" content="2020-05-18T11:48:01.611Z">
 <meta property="article:author" content="maben">
+<meta property="article:tag" content="linux">
+<meta property="article:tag" content="ssh">
 <meta name="twitter:card" content="summary">
 
-<link rel="canonical" href="http://maben.me/tags/bitmap/">
+<link rel="canonical" href="http://maben.me/2020/05/18/ssh-or-scp-fail/">
 
 
 <script id="page-configurations">
@@ -66,13 +72,13 @@
   CONFIG.page = {
     sidebar: "",
     isHome: false,
-    isPost: false,
+    isPost: true,
     isPage: false,
     isArchive: false
   };
 </script>
 
-  <title>标签: bitmap | maben's blog</title>
+  <title>ssh或scp失败的问题 | maben's blog</title>
   
 
 
@@ -166,50 +172,104 @@
           <div class="content">
             
 
+  <div class="posts-expand">
+      
   
   
-  
-  <div class="post-block">
-    <div class="posts-collapse">
-      <div class="collection-title">
-        <h1 class="collection-header">bitmap
-          <small>标签</small>
+  <article itemscope itemtype="http://schema.org/Article" class="post-block " lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://maben.me/2020/05/18/ssh-or-scp-fail/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="maben">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="maben's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ssh或scp失败的问题
         </h1>
-      </div>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-05-18 19:33:55 / 修改时间：19:48:01" itemprop="dateCreated datePublished" datetime="2020-05-18T19:33:55+08:00">2020-05-18</time>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
 
       
-    <div class="collection-year">
-      <h1 class="collection-header">2019</h1>
+        <p>项目中有这么一个需求，要把本地文件较大批量的拷贝到远程机器，因为拷贝的机器数比较多，所以使用了<code>nohup scp xxx user@host:/path/to/file &gt; /dev/null 2&gt;&amp; &amp;</code>这种异步操作，最近发现经常有一些文件拷贝失败，经排查最终定位到是ssh的连接数超出限制，导致被目标机器拒绝了。</p>
+<p>官方文档地址：<a href="https://linux.die.net/man/5/sshd_config" target="_blank" rel="noopener">https://linux.die.net/man/5/sshd_config</a></p>
+<p>其中需要修改的参数是<code>MaxStartups</code>，官方的文档描述如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Specifies the maximum number of concurrent unauthenticated connections to the SSH daemon. Additional connections will be dropped until authentication succeeds or the LoginGraceTime expires for a connection. The default is 10.</span><br><span class="line"></span><br><span class="line">Alternatively, random early drop can be enabled by specifying the three colon separated values &#39;&#39;start:rate:full&#39;&#39; (e.g. &quot;10:30:60&quot;). sshd(8) will refuse connection attempts with a probability of &#39;&#39;rate&#x2F;100&#39;&#39; (30%) if there are currently &#39;&#39;start&#39;&#39; (10) unauthenticated connections. The probability increases linearly and all connection attempts are refused if the number of unauthenticated connections reaches &#39;&#39;full&#39;&#39; (60).</span><br></pre></td></tr></table></figure>
+
+<p>简单来说就是这个参数用来指定ssh的最大并发未身份验证连接数，默认是10，在大批量文件拷贝的情况下显然是不够的。</p>
+<p>参数可以设置一个整数，如<code>30</code>，也可以设置一个用冒号分割的值:<code>start:rate:full</code>，假如设置的是<code>10:30:60</code>，那么它的作用是：</p>
+<ul>
+<li>连接数在10(start)以下不会拒绝连接</li>
+<li>当连接数超过10(start)之后，新的连接有30%(rate)的几率被拒绝掉</li>
+<li>当连接数超过60(full)后，那么所有的连接均会被拒绝</li>
+</ul>
+<p>查到了原因，根据自己实际的情况，将参数设置为合适值，执行<code>service ssh restart</code>重启ssh服务，问题修复。</p>
+
     </div>
 
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
+    
+    
+    
 
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2019-11-24T10:41:23+08:00"
-              content="2019-11-24">
-          11-24
-        </time>
-      </div>
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/linux/" rel="tag"># linux</a>
+              <a href="/tags/ssh/" rel="tag"># ssh</a>
+          </div>
 
-      <h2 class="post-title">
-          <a class="post-title-link" href="/2019/11/24/thinking-about-bitmap/" itemprop="url">
-            <span itemprop="name">Bitmap实现过程中的一些思考</span>
-          </a>
-      </h2>
+        
 
-    </header>
+          <div class="post-nav">
+            <div class="post-nav-next post-nav-item">
+                <a href="/2020/04/21/mmap-implementation/" rel="next" title="mmap机制分析">
+                  <i class="fa fa-chevron-left"></i> mmap机制分析
+                </a>
+            </div>
+
+            <span class="post-nav-divider"></span>
+
+            <div class="post-nav-prev post-nav-item">
+            </div>
+          </div>
+      </footer>
+    
   </article>
+  
+  
+  
 
-    </div>
   </div>
-  
-  
-  
-
-  
-
 
 
           </div>

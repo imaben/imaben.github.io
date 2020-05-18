@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
 <meta name="theme-color" content="#222">
-<meta name="generator" content="Hexo 4.1.1">
+<meta name="generator" content="Hexo 4.2.0">
   <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
@@ -53,7 +53,7 @@
   <meta name="description" content="前段时间为了做一个分享，实现了一个简单的搜索引擎（https:&#x2F;&#x2F;github.com&#x2F;imaben&#x2F;ts-engine), 其中有一个标记删除的地方用到了bitmap，刚开始没有想那么复杂，真正写起来，发现需要注意的一些细节还是不少的，所以在此记录一下开发过程中的一些心得，主要是一些位运算相关的点。 代码链接：https:&#x2F;&#x2F;github.com&#x2F;imaben&#x2F;ts-engine&#x2F;blob&#x2F;ma">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Bitmap实现过程中的一些思考">
-<meta property="og:url" content="http:&#x2F;&#x2F;maben.me&#x2F;2019&#x2F;11&#x2F;24&#x2F;thinking-about-bitmap&#x2F;index.html">
+<meta property="og:url" content="http://maben.me/2019/11/24/thinking-about-bitmap/index.html">
 <meta property="og:site_name" content="maben&#39;s blog">
 <meta property="og:description" content="前段时间为了做一个分享，实现了一个简单的搜索引擎（https:&#x2F;&#x2F;github.com&#x2F;imaben&#x2F;ts-engine), 其中有一个标记删除的地方用到了bitmap，刚开始没有想那么复杂，真正写起来，发现需要注意的一些细节还是不少的，所以在此记录一下开发过程中的一些心得，主要是一些位运算相关的点。 代码链接：https:&#x2F;&#x2F;github.com&#x2F;imaben&#x2F;ts-engine&#x2F;blob&#x2F;ma">
 <meta property="og:locale" content="zh_CN">
@@ -271,7 +271,7 @@
 
 <p><strong>小细节：</strong></p>
 <p>在上面按位取反的时候，需要注意32位与64位的问题，假如有以下函数：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">uint64_t</span> mem_align(<span class="keyword">uint64_t</span> i, <span class="keyword">int</span> align)</span><br><span class="line">&#123;</span><br><span class="line">        <span class="keyword">return</span> (i + align - <span class="number">1</span>) &amp; ~(align - <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">uint64_t</span> <span class="title">mem_align</span><span class="params">(<span class="keyword">uint64_t</span> i, <span class="keyword">int</span> align)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> (i + align - <span class="number">1</span>) &amp; ~(align - <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>看似很和谐，其实隐藏着一个大坑，我们将这段代码编译成汇编（GCC），生成如下代码：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">_mem_align:                             ## @mem_align</span><br><span class="line">        .cfi_startproc</span><br><span class="line">## %bb.0:</span><br><span class="line">        push    rbp</span><br><span class="line">        .cfi_def_cfa_offset 16</span><br><span class="line">        .cfi_offset rbp, -16</span><br><span class="line">        mov     rbp, rsp</span><br><span class="line">        .cfi_def_cfa_register rbp</span><br><span class="line">        mov     qword ptr [rbp - 8], rdi</span><br><span class="line">        mov     dword ptr [rbp - 12], esi</span><br><span class="line">        mov     rdi, qword ptr [rbp - 8]</span><br><span class="line">        movsxd  rax, dword ptr [rbp - 12]</span><br><span class="line">        add     rdi, rax</span><br><span class="line">        sub     rdi, 1</span><br><span class="line">        mov     esi, dword ptr [rbp - 12]</span><br><span class="line">        sub     esi, 1</span><br><span class="line">        xor     esi, -1</span><br><span class="line">        movsxd  rax, esi</span><br><span class="line">        and     rdi, rax</span><br><span class="line">        mov     rax, rdi</span><br><span class="line">        pop     rbp</span><br><span class="line">        ret</span><br><span class="line">        .cfi_endproc</span><br><span class="line">                                        ## -- End function</span><br><span class="line">        .globl  _main                   ## -- Begin function main</span><br><span class="line">        .p2align        4, 0x90</span><br></pre></td></tr></table></figure>
 <p>可以看到在15行至17行在对align做-1并取反的操作中，竟然是在32位寄存器中进行的，这样就会导致当i的值超过32位时，取反后的结果总是等于0，进而得到的结果也会是0，解决办法很简单，就是把align的类型也改为64位即可。<br>这种情况不同编译器可能会有不同的行为，所以为了稳妥起见，故在定义128长度的时候，改成了64位的128LL。</p>
@@ -375,12 +375,12 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">6</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-count">8</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -411,7 +411,7 @@
   </span>
   <span class="author" itemprop="copyrightHolder">maben</span>
 </div>
-  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.1.1
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
   </div>
   <span class="post-meta-divider">|</span>
   <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.5.0
