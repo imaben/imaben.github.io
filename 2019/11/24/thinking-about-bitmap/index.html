@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
 <meta name="theme-color" content="#222">
-<meta name="generator" content="Hexo 4.2.0">
+<meta name="generator" content="Hexo 5.2.0">
   <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
@@ -228,8 +228,8 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>前段时间为了做一个分享，实现了一个简单的搜索引擎（<a href="https://github.com/imaben/ts-engine" target="_blank" rel="noopener">https://github.com/imaben/ts-engine</a>), 其中有一个标记删除的地方用到了bitmap，刚开始没有想那么复杂，真正写起来，发现需要注意的一些细节还是不少的，所以在此记录一下开发过程中的一些心得，主要是一些位运算相关的点。</p>
-<p>代码链接：<a href="https://github.com/imaben/ts-engine/blob/master/bitmap.h" target="_blank" rel="noopener">https://github.com/imaben/ts-engine/blob/master/bitmap.h</a></p>
+        <p>前段时间为了做一个分享，实现了一个简单的搜索引擎（<a target="_blank" rel="noopener" href="https://github.com/imaben/ts-engine">https://github.com/imaben/ts-engine</a>), 其中有一个标记删除的地方用到了bitmap，刚开始没有想那么复杂，真正写起来，发现需要注意的一些细节还是不少的，所以在此记录一下开发过程中的一些心得，主要是一些位运算相关的点。</p>
+<p>代码链接：<a target="_blank" rel="noopener" href="https://github.com/imaben/ts-engine/blob/master/bitmap.h">https://github.com/imaben/ts-engine/blob/master/bitmap.h</a></p>
 <p>首先说一下bitmap的原理，bitmap的应用非常广泛，它通常是以bit位来标记某个id的状态，优点是占用空间小，查询效率高，<code>1byte = 8bit</code>，假如一共1000万的数据量，总共算下来占用的空间也只有 <code>10000000/8/1024 = 1220KB</code>, 刚刚有1MB多一点。查询时直接根据id来找到对应的byte，然后做位于运算，直接可以拿到结果，由于不涉及到复杂运算，寻址的范围也很小，所以整体的查询效率非常高。</p>
 <p>但这种方式本身也有局限性，就是要标记的id最好是从1开始自增的情况，如果id完全没有规律，则很容易出现内存空洞的情况。</p>
 <p>bitmap结构体的定义如下：</p>
@@ -237,7 +237,7 @@
 <p>结构体本身比较简单，一个uint8_t(char)类型的指针，指向一块保存bitmap数据的内存，一个uint64_t类型的长度，用来标记c的长度。有一些做法是采用int型指针来保存数据，但在跨平台时，可能要考虑大小端的问题，但个人感觉没有本质上的区别。</p>
 <p>第一步要做的就是要保证每次set时c的长度是足够的，所以需要在每次set时，都需要检查一下c的长度，以防止内存访问越界的情况发生。但是为了减少内存频繁分配的开销，一般都会有一些预分配的做法，比如按照128字节做对齐，当小于128字节时，也分配128字节的大小，当是129字节时，就分配256字节，以此类推。这样做有两点好处，一是避免递增访问时，内存频繁分配，二是保证整个buffer的内存大小总是cpu cacheline的整倍数，从而提高cpu缓存的存取性能。</p>
 <p>首先要实现上面提到的预分配逻辑：假如按照比较传统的写法应该是这样(伪代码)：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PREALLOC 128</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">mem_align</span><span class="params">(<span class="keyword">int</span> <span class="built_in">size</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">size</span> &lt;= PREALLOC) &#123;</span><br><span class="line">        <span class="keyword">return</span> PREALLOC;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 求size是PREALLOC的多少倍</span></span><br><span class="line">    <span class="comment">// 向上取整并乘以PREALLOC</span></span><br><span class="line">    <span class="keyword">int</span> multiple = <span class="built_in">ceil</span>(<span class="built_in">size</span> / PREALLOC);</span><br><span class="line">    <span class="keyword">return</span> multiple * PREALLOC;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PREALLOC 128</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">mem_align</span><span class="params">(<span class="keyword">int</span> size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (size &lt;= PREALLOC) &#123;</span><br><span class="line">        <span class="keyword">return</span> PREALLOC;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 求size是PREALLOC的多少倍</span></span><br><span class="line">    <span class="comment">// 向上取整并乘以PREALLOC</span></span><br><span class="line">    <span class="keyword">int</span> multiple = <span class="built_in">ceil</span>(size / PREALLOC);</span><br><span class="line">    <span class="keyword">return</span> multiple * PREALLOC;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>但这样显然不太优雅，性能上开销也比较大，如果通过位运算来解决呢？<br>举两个例子，假如有10和129，我们需要最终转换为128和256，如下表：</p>
 <table>
@@ -375,12 +375,12 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-count">7</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">8</span>
+        <span class="site-state-item-count">9</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -411,7 +411,7 @@
   </span>
   <span class="author" itemprop="copyrightHolder">maben</span>
 </div>
-  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v4.2.0
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> 强力驱动 v5.2.0
   </div>
   <span class="post-meta-divider">|</span>
   <div class="theme-info">主题 – <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> v7.5.0
