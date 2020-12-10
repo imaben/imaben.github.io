@@ -202,7 +202,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-12-10 10:57:03" itemprop="dateModified" datetime="2020-12-10T10:57:03+08:00">2020-12-10</time>
+                <time title="修改时间：2020-12-10 10:58:46" itemprop="dateModified" datetime="2020-12-10T10:58:46+08:00">2020-12-10</time>
               </span>
 
           
@@ -219,7 +219,7 @@
           <p>最近需要在wsl下启动windows应用，但发现无论执行任何程序，如notepad.exe、powershell.exe均提示<code>permission denied</code>，但我清晰的记得之前微软更新过一个版本，是可以让wsl和windows互通的，而且是比较早的一个特性，谷歌一下搜到了官方的文档：<br><a target="_blank" rel="noopener" href="https://docs.microsoft.com/en-us/windows/wsl/interop">https://docs.microsoft.com/en-us/windows/wsl/interop</a></p>
 <p>经过一系列排查，才发现之前为了修改wsl的挂载权限，在/etc/wsl.conf中增加了一些配置，导致挂载的时候没有挂载执行权限。原配置：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">[automount]</span><br><span class="line">enabled &#x3D; true</span><br><span class="line">root &#x3D; &#x2F;mnt&#x2F;</span><br><span class="line">options &#x3D; &quot;metadata,dmask&#x3D;022,fmask&#x3D;133&quot;</span><br><span class="line">mountFsTab &#x3D; false</span><br><span class="line"></span><br><span class="line">[network]</span><br><span class="line">generateResolveConf &#x3D; true</span><br></pre></td></tr></table></figure>
-<p>其中dmask和fmask代表的是挂载的目录权限和文件权限，这个和传统的linux权限(chmod)正好是完全相反的，mask是过滤的意思，比如原来644的权限，对应的mask为<code>777-644=133</code>，因为原来设置的是644权限，所以必然提示<code>permission denied</code>，但是如果改成<code>fmask=033</code>，又会出现所有的文件都有执行权限的问题，所以要想两者兼顾，只能针对盘符进行不同的设置了，比如C盘和D盘一般都是安装的可执行程序，那么就把这两个盘挂载的时候设置为033，E盘和F盘一般为普通文件，就可以设置为133，故只需要在<code>wsl.conf</code>中的<code>mountFsTab</code>设置为<code>true</code>，j最终<code>wsl.conf</code>的配置如下：</p>
+<p>其中dmask和fmask代表的是挂载的目录权限和文件权限，这个和传统的linux权限(chmod)正好是完全相反的，mask是过滤的意思，比如原来644的权限，对应的mask为<code>777-644=133</code>，因为原来设置的是644权限，所以必然提示<code>permission denied</code>，但是如果改成<code>fmask=033</code>，又会出现所有的文件都有执行权限的问题，所以要想两者兼顾，只能针对盘符进行不同的设置了，比如C盘和D盘一般都是安装的可执行程序，那么就把这两个盘挂载的时候设置为033，E盘和F盘一般为普通文件，就可以设置为133，故只需要在<code>wsl.conf</code>中的<code>mountFsTab</code>设置为<code>true</code>，最终<code>wsl.conf</code>的配置如下：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">[automount]</span><br><span class="line">enabled &#x3D; true</span><br><span class="line">root &#x3D; &#x2F;mnt&#x2F;</span><br><span class="line">options &#x3D; &quot;metadata,dmask&#x3D;022,fmask&#x3D;133&quot;</span><br><span class="line">mountFsTab &#x3D; true</span><br><span class="line"></span><br><span class="line">[network]</span><br><span class="line">generateResolveConf &#x3D; true</span><br></pre></td></tr></table></figure>
 
 <p>然后修改<code>/etc/fstab</code>如下：</p>
